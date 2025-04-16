@@ -1,46 +1,32 @@
 
 from flask import Flask, request, jsonify
-import requests
 from datetime import datetime
+import requests
+import json
+import openai
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+api_key = os.getenv("OPENAI_API_KEY")
+webhook_url = os.getenv("GOOGLE_SHEETS_WEBHOOK")
+client = openai.OpenAI(api_key=api_key)
 
 app = Flask(__name__)
 
-# Google Sheets Webhook URL
-GOOGLE_SHEETS_WEBHOOK = "https://script.google.com/macros/s/YOUR_WEB_APP_URL/exec"  # TODO: Replace with your actual URL
-
 @app.route("/")
-def home():
-    return "WiseCollector GPT 평가 서버가 실행 중입니다."
+def index():
+    return "✅ GPT 평가 서버가 실행 중입니다."
 
 @app.route("/evaluate", methods=["POST"])
 def evaluate():
     try:
         data = request.json
-        print("수신된 평가 결과:", data)
-
-        # 날짜 자동 설정
-        if "진단일" not in data:
-            data["진단일"] = datetime.now().strftime("%Y-%m-%d")
-
-        # Google Sheets로 POST 전송
-        response = requests.post(GOOGLE_SHEETS_WEBHOOK, json=data)
-        return jsonify({
-            "status": "success",
-            "google_sheets_response": response.text
-        }), 200
+        print("📥 수신된 평가 데이터:", data)
+        return jsonify({"status": "success", "message": "데이터가 정상 수신되었습니다."}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
-
-import openai  # 맨 위에 추가
-import json     # 이미 있으면 생략 가능
-
-# GPT API 키 설정
-client = openai.OpenAI(api_key="sk-여기에-본인의-API-키를-붙여넣기")
-
-# Function 정의 (이름, 이메일, 점수 등 포함)
 functions = [
     {
         "name": "submit_evaluation_result",
@@ -83,7 +69,6 @@ def submit():
         user_data = request.json
         print("✅ 제출된 사용자 응답:", user_data)
 
-        # GPT 메시지 구성
         messages = [
             {
                 "role": "system",
@@ -96,7 +81,6 @@ def submit():
             }
         ]
 
-        # GPT 호출
         response = client.chat.completions.create(
             model="gpt-4",
             messages=messages,
@@ -104,15 +88,13 @@ def submit():
             tool_choice={"type": "function", "function": {"name": "submit_evaluation_result"}}
         )
 
-        # GPT 리포트 → /evaluate로 전송
         message = response.choices[0].message
         if message.tool_calls:
             tool_call = message.tool_calls[0]
             args = json.loads(tool_call.function.arguments)
             args.setdefault("진단일", datetime.now().strftime("%Y-%m-%d"))
 
-            # 내부 Webhook 전송
-            res = requests.post("http://localhost:8080/evaluate", json=args)
+            res = requests.post(webhook_url, json=args)
 
             return jsonify({"status": "success", "응답": args, "저장결과": res.text}), 200
         else:
@@ -120,3 +102,6 @@ def submit():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True, port=8080)
