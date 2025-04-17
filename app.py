@@ -43,6 +43,7 @@ def next_question():
         step = f"STEP {user_session['current_step']}"
         result = generate_question(step)
         user_session["current_question"] = result
+        result["step"] = step  # ✅ 클라이언트에게 단계 정보 전달
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -55,14 +56,22 @@ def submit_answer():
         question = user_session.get("current_question", {}).get("question", "")
         step = f"STEP {user_session['current_step']}"
         feedback = evaluate_answer(question, answer, step)
+
         user_session["answers"].append({
             "step": step,
             "question": question,
             "answer": answer,
             "feedback": feedback
         })
+
         user_session["current_step"] += 1
-        return jsonify(feedback)
+        complete = user_session["current_step"] > 9  # ✅ 모든 문항 완료 여부 판단
+
+        return jsonify({
+            "feedback": feedback,
+            "step": step,
+            "complete": complete
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -77,7 +86,6 @@ def report():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 평가 결과 제출 (기존 기능 유지)
 @app.route("/submit", methods=["POST"])
 def submit():
     try:
