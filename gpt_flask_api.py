@@ -1,8 +1,13 @@
 import json
 import os
+import logging
 from openai import OpenAI
 from dotenv import load_dotenv
 from gpt_function_schema import quiz_function_definitions
+
+# ✅ 로그 설정
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -16,8 +21,8 @@ def load_context_for_step(step: str) -> str:
 def generate_question(step: str):
     try:
         context = load_context_for_step(step)
-        print(f"\n📘 [STEP]: {step}")
-        print(f"📄 [CONTEXT 길이]: {len(context)}")
+        log.info(f"\n📘 [STEP]: {step}")
+        log.info(f"📄 [CONTEXT 길이]: {len(context)}")
 
         response = client.chat.completions.create(
             model="gpt-4",
@@ -31,8 +36,8 @@ def generate_question(step: str):
         )
 
         message = response.choices[0].message
-        print(f"📨 [GPT 응답 role]: {message.role}")
-        print(f"📨 [GPT function_call]: {message.function_call}")
+        log.info(f"📨 [GPT 응답 role]: {message.role}")
+        log.info(f"📨 [GPT function_call]: {message.function_call}")
 
         call = message.function_call
         if not call or not call.arguments:
@@ -45,7 +50,7 @@ def generate_question(step: str):
         return result
 
     except Exception as e:
-        print(f"❌ 문제 생성 실패 ({step}):", e)
+        log.error(f"❌ 문제 생성 실패 ({step}): {e}")
         return {
             "question": f"❌ 문제 생성 실패: {str(e)}",
             "choices": [],
@@ -66,7 +71,7 @@ def evaluate_answer(question: str, answer: str, step: str, correct=""):
         )
         return json.loads(response.choices[0].message.function_call.arguments)
     except Exception as e:
-        print(f"❌ 답안 평가 실패 ({step}):", e)
+        log.error(f"❌ 답안 평가 실패 ({step}): {e}")
         return {"feedback": f"❌ 평가 실패: {str(e)}", "step": step}
 
 def generate_report(name: str, email: str, answers: list):
@@ -85,5 +90,5 @@ def generate_report(name: str, email: str, answers: list):
         )
         return json.loads(response.choices[0].message.function_call.arguments)
     except Exception as e:
-        print("❌ 리포트 생성 실패:", e)
+        log.error("❌ 리포트 생성 실패:", e)
         return {"report": f"❌ 리포트 생성 실패: {str(e)}"}
