@@ -1,21 +1,20 @@
-from flask import Flask, request, jsonify
+import json
+import os
 from openai import OpenAI
 from dotenv import load_dotenv
-import os
-
-load_dotenv()
-app = Flask(__name__)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# Function Definitions (이미 정의된 quiz_function_definitions를 import 했다고 가정)
 from gpt_function_schema import quiz_function_definitions
 
-@app.route("/generate-question", methods=["POST"])
-def generate_question():
-    data = request.json
-    step = data.get("step")
-    context = data.get("context")
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+def load_context_for_step(step: str) -> str:
+    filename = f"step_{step.split()[-1]}.json"
+    with open(filename, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data["context"]
+
+def generate_question(step: str):
+    context = load_context_for_step(step)
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
@@ -25,19 +24,9 @@ def generate_question():
         functions=quiz_function_definitions,
         function_call={"name": "generate_quiz_question"}
     )
+    return json.loads(response.choices[0].message.function_call.arguments)
 
-    function_args = response.choices[0].message.function_call.arguments
-    return jsonify({"generated": function_args})
-
-
-@app.route("/evaluate", methods=["POST"])
-def evaluate_answer():
-    data = request.json
-    question = data.get("question")
-    answer = data.get("answer")
-    step = data.get("step")
-    correct = data.get("correct") or ""
-
+def evaluate_answer(question: str, answer: str, step: str, correct=""):
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
@@ -47,28 +36,18 @@ def evaluate_answer():
         functions=quiz_function_definitions,
         function_call={"name": "submit_answer"}
     )
+    return json.loads(response.choices[0].message.function_call.arguments)
 
-    function_args = response.choices[0].message.function_call.arguments
-    return jsonify({"evaluation": function_args})
-
-
-@app.route("/report", methods=["POST"])
-def generate_report():
-    data = request.json
-
+def generate_report(name: str, email: str, answers: list):
+    messages = [
+        {"role": "system", "content": "넌 진단 결과 리포트를 생성하는 GPT야."},
+        {"role": "user", "content": f"다음은 {name}({email})의 진단 응답이야. 요약해줘.\n\n{json.dumps(answers, ensure_ascii=False)}"}
+    ]
     response = client.chat.completions.create(
         model="gpt-4",
-        messages=[
-            {"role": "system", "content": "넌 진단 결과 리포트를 생성하는 GPT야."},
-            {"role": "user", "content": "응답 데이터를 기반으로 진단 요약표를 만들어줘."}
-        ],
+        messages=messages,
         functions=quiz_function_definitions,
         function_call={"name": "generate_diagnostic_report"},
         temperature=0.7
     )
-
-    function_args = response.choices[0].message.function_call.arguments
-    return jsonify({"report": function_args})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    return json.loads(response.choices[0].message.function_call.arguments)
