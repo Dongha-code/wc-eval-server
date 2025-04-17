@@ -1,72 +1,140 @@
-<!-- 생략: <head>, <style> 및 기존 구조 유지 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WiseCollector 2.0 학습 진단</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-3xl bg-white p-8 rounded-xl shadow-md space-y-6" id="main-container">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">WiseCollector 2.0 운영 & 프록시 학습 진단</h1>
+        <p class="text-sm text-gray-500">⏱ 예상 소요 시간: 약 60분 (총 30문항)</p>
+      </div>
 
-<script>
-  // ... (기존 코드 생략)
+      <div id="quiz-container">
+        <p id="progress" class="text-sm text-gray-600 mb-1"></p>
+        <p id="step-indicator" class="text-sm text-blue-600 font-medium"></p>
+        <p id="question" class="mt-2 whitespace-pre-line"></p>
 
-  async function submitAnswer() {
-    const answer = document.getElementById("answer").value.trim();
-    if (!answer) return alert("답변을 입력하세요.");
+        <textarea id="answer" rows="4" class="mt-4 w-full border border-gray-300 rounded-md p-2" placeholder="여기에 답변을 입력하세요"></textarea>
+        <button id="next-btn" class="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md disabled:opacity-50" disabled>
+          다음 문항
+        </button>
+        <p id="status" class="text-sm text-gray-500 mt-2"></p>
+      </div>
 
-    const submitBtn = document.getElementById("submit-button");
-    submitBtn.disabled = true;
-    submitBtn.innerText = "제출 중...";
-    document.getElementById("status").innerText = "⏳ GPT가 답변을 평가하고 있습니다...";
+      <div id="result-container" class="hidden bg-gray-50 p-6 rounded-lg">
+        <h2 class="text-xl font-bold text-red-600 mb-4">🎉 모든 문항을 완료하셨습니다!</h2>
+        <p class="text-sm text-gray-700 mb-1"><strong>✅ 진단 결과 제출 완료 (30문항).</strong></p>
+        <p class="text-sm text-gray-700 mb-1" id="result-name"></p>
+        <p class="text-sm text-gray-700 mb-4" id="result-email"></p>
+        <ul class="space-y-2 text-sm text-gray-700">
+          <li>📊 총 문항 수: <span id="result-total"></span></li>
+          <li>🧮 평균 점수: <span id="result-avg"></span></li>
+          <li>📈 최고/최저 점수: <span id="result-max-min"></span></li>
+          <li>🎯 평가 수준: <span id="result-level" class="font-bold text-red-500"></span></li>
+          <li>📌 복습 추천 STEP: <span id="result-review-steps"></span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
 
-    const res = await fetch("/api/submit-answer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, answer })
-    });
+  <script>
+    const stepIndicator = document.getElementById("step-indicator");
+    const progress = document.getElementById("progress");
+    const question = document.getElementById("question");
+    const answerInput = document.getElementById("answer");
+    const nextBtn = document.getElementById("next-btn");
+    const statusText = document.getElementById("status");
+    const resultContainer = document.getElementById("result-container");
+    const quizContainer = document.getElementById("quiz-container");
 
-    const data = await res.json();
-    if (data.error) {
-      document.getElementById("status").innerText = "⚠️ 오류 발생: " + data.error;
-      submitBtn.innerText = "다음 문항";
-      submitBtn.disabled = false;
-    } else if (data.complete) {
-      // 👇 진단 완료 시 UI를 숨기고 결과만 표시
-      document.getElementById("quiz-area").style.display = "none";
-      document.getElementById("status").style.display = "none";
+    let currentQuestion = 0;
+    let totalQuestions = 30;
+    let questions = [];
+    let stepSequence = [];
 
-      // 결과 요약 표시
-      showReport();
-    } else {
-      await loadNextQuestion();
+    let userName = "";
+    let userEmail = "";
+
+    async function fetchNextQuestion() {
+      nextBtn.disabled = true;
+      statusText.textContent = "📡 문제를 불러오는 중입니다...";
+      const response = await fetch("/api/next-question");
+      const data = await response.json();
+      if (data && data.question) {
+        questions.push(data.question);
+        stepSequence.push(data.step || "STEP ?");
+        currentQuestion = questions.length;
+        updateUI();
+      }
+      nextBtn.disabled = false;
+      statusText.textContent = "";
     }
-  }
 
-  async function showReport() {
-    const res = await fetch(`/api/report?email=${encodeURIComponent(email)}`);
-    const report = await res.json();
+    function updateUI() {
+      progress.textContent = `(${currentQuestion}/30)`;
+      stepIndicator.innerHTML = `🔍 학습 범위: <span class="font-semibold text-blue-500">${stepSequence[currentQuestion - 1]}</span>`;
+      question.textContent = questions[currentQuestion - 1] || "";
+      answerInput.value = "";
+      answerInput.focus();
+    }
 
-    const all = report.answers;
-    const scores = all.map(r => r.feedback?.score || 0);
-    const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-    const min = Math.min(...scores);
-    const max = Math.max(...scores);
-    const level = all[all.length - 1].feedback?.level || "-";
+    async function submitAnswer() {
+      const answer = answerInput.value.trim();
+      if (!answer) return;
+      nextBtn.disabled = true;
+      statusText.textContent = "답안을 제출 중입니다...";
 
-    const lowestSteps = all
-      .map(r => ({ step: r.step, score: r.feedback?.score || 0 }))
-      .sort((a, b) => a.score - b.score)
-      .slice(0, 3)
-      .map(r => r.step);
+      const payload = {
+        answer,
+        question: questions[currentQuestion - 1],
+        step: stepSequence[currentQuestion - 1],
+        name: userName,
+        email: userEmail,
+      };
 
-    const summaryHTML = `
-      <h3>🎉 모든 문항을 완료하셨습니다!</h3>
-      <p>✅ 진단 결과 제출 완료 (${all.length}문항).</p>
-      <p>이름: ${report.name}</p>
-      <p>이메일: ${report.email}</p>
-      <br />
-      <p>📊 총 문항 수: ${all.length}</p>
-      <p>🧮 평균 점수: ${avg}점</p>
-      <p>📈 최고/최저 점수: ${max}점 / ${min}점</p>
-      <p>🎯 평가 수준: <strong>${level}</strong></p>
-      <p>📌 복습 추천 STEP: ${[...new Set(lowestSteps)].join(", ")}</p>
-    `;
+      await fetch("/api/submit-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    const summary = document.getElementById("summary");
-    summary.innerHTML = summaryHTML;
-    summary.style.display = "block";
-  }
-</script>
+      if (currentQuestion >= totalQuestions) {
+        showResult();
+      } else {
+        await fetchNextQuestion();
+      }
+    }
+
+    function showResult() {
+      quizContainer.classList.add("hidden");
+      resultContainer.classList.remove("hidden");
+
+      document.getElementById("result-name").textContent = `이름: ${userName}`;
+      document.getElementById("result-email").textContent = `이메일: ${userEmail}`;
+
+      fetch("/api/result-summary")
+        .then(res => res.json())
+        .then(summary => {
+          document.getElementById("result-total").textContent = summary.total || "30";
+          document.getElementById("result-avg").textContent = `${summary.averageScore || 0}점`;
+          document.getElementById("result-max-min").textContent = `${summary.max || 100}점 / ${summary.min || 0}점`;
+          document.getElementById("result-level").textContent = summary.level || "N/A";
+          document.getElementById("result-review-steps").textContent = summary.recommendedSteps || "-";
+        });
+    }
+
+    nextBtn.addEventListener("click", submitAnswer);
+
+    window.onload = async () => {
+      userName = prompt("이름을 입력하세요:");
+      userEmail = prompt("이메일을 입력하세요:");
+      await fetchNextQuestion();
+    };
+  </script>
+</body>
+</html>
