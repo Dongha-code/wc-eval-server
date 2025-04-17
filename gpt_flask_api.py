@@ -16,6 +16,9 @@ def load_context_for_step(step: str) -> str:
 def generate_question(step: str):
     try:
         context = load_context_for_step(step)
+        print(f"\n📘 [STEP]: {step}")
+        print(f"📄 [CONTEXT 길이]: {len(context)}")
+
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
@@ -27,13 +30,17 @@ def generate_question(step: str):
             timeout=10
         )
 
-        call = response.choices[0].message.function_call
+        message = response.choices[0].message
+        print(f"📨 [GPT 응답 role]: {message.role}")
+        print(f"📨 [GPT function_call]: {message.function_call}")
+
+        call = message.function_call
         if not call or not call.arguments:
-            raise ValueError("GPT가 문제를 반환하지 않았습니다.")
+            raise ValueError("GPT가 function_call 또는 arguments를 반환하지 않았습니다.")
 
         result = json.loads(call.arguments)
         if not result.get("question"):
-            raise ValueError("생성된 문제 항목이 없습니다.")
+            raise ValueError("GPT 응답에 question 필드가 없습니다.")
 
         return result
 
