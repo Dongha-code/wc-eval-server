@@ -42,7 +42,8 @@
       <button onclick="startQuiz()">퀴즈 시작</button>
     </div>
     <div id="question-area" style="display:none;">
-      <div id="question-number"></div>
+      <div id="question-number">(0/30)</div>
+      <div id="question-step">📘 현재 단계: -</div>
       <div id="question-text">🔄 문제를 생성 중입니다...</div>
       <textarea id="answer" rows="4" placeholder="여기에 답변을 입력하세요"></textarea>
       <button id="submit-button" onclick="submitAnswer()">다음 문항</button>
@@ -52,6 +53,7 @@
 
 <script>
 let isLoading = false;
+const totalQuestions = 30;
 
 function startQuiz() {
   const name = document.getElementById("name").value;
@@ -80,16 +82,19 @@ async function loadNextQuestion() {
   submitBtn.disabled = true;
   document.getElementById("question-text").innerText = "🔄 문제를 생성 중입니다...";
   document.getElementById("question-number").innerText = "";
+  document.getElementById("question-step").innerText = "";
 
   try {
     const res = await fetch("/api/next-question");
     const q = await res.json();
 
-    if (!q || !q.question || q.question.startsWith("❌") || q.question === "undefined") {
+    if (!q || !q.question) {
       document.getElementById("question-text").innerText = "❌ 문제를 불러오지 못했습니다.";
     } else {
+      const currentNum = q.number || 0;
       document.getElementById("question-text").innerText = q.question;
-      document.getElementById("question-number").innerText = `📘 현재 단계: ${q.step}`;
+      document.getElementById("question-step").innerText = `📘 현재 단계: ${q.step}`;
+      document.getElementById("question-number").innerText = `(${currentNum}/${totalQuestions})`;
       document.getElementById("answer").value = "";
     }
 
