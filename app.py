@@ -1,87 +1,119 @@
-from flask import Flask, request, jsonify
-from datetime import datetime
-import requests, json, openai, os
-from dotenv import load_dotenv
-from gpt_function_schema import functions
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 from gpt_eval_api_flow import (
+    generate_next_step,
+    load_step_context,
     generate_next_question,
-    evaluate_answer,
-    generate_report,
-    session
+    user_sessions
 )
+from gpt_function_schema import functions
+import openai
 
-load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-webhook_url = os.getenv("GOOGLE_SHEETS_WEBHOOK")
-client = openai.OpenAI(api_key=api_key)
+app = Flask(__name__, static_url_path='/static', static_folder='static')
+CORS(app)
 
-app = Flask(__name__)
+client = openai.OpenAI()
 
-@app.route("/")
-def index():
-    return "✅ GPT 진단 서버 실행 중"
-
+# 퀴즈 시작 (사용자 초기화)
 @app.route("/api/start", methods=["POST"])
-def start():
-    data = request.json
-    session["name"] = data["name"]
-    session["email"] = data["email"]
-    session["current"] = 0
-    session["answers"] = []
-    return jsonify({"status": "ready"})
+def start_quiz():
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        user_sessions[email] = {
+            "step_sequence": [],
+            "history": [],
+            "current_index": 0,
+        }
+        return jsonify({"status": "initialized"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+# 다음 문제 요청
 @app.route("/api/next-question", methods=["GET"])
 def next_question():
     try:
-        question = generate_next_question()
+        email = request.args.get("email")
+        current_index = int(request.args.get("index", 0))
+
+        step = generate_next_step(email, current_index)
+        if step is None:
+            return jsonify({"complete": True})
+
+        context = load_step_context(step)
+        if context is None:
+            return jsonify({"error": f"Context for {step} not found"})
+
+        prompt = f"""다음은 {step} 단계의 학습 콘텐츠입니다. 이를 바탕으로 실무 적용 중심의 심화 서술형 문제를 1문항 생성해 주세요.
+조건:
+- 학습자의 실무 적용 능력을 평가할 수 있도록 실제 사례 기반 질문으로 구성
+- 콘텐츠 이해도를 파악할 수 있도록 비판적 사고를 유도
+- 문제는 한국어로 제공"""
+
+        question = generate_next_question(prompt, context)
+        if question is None:
+            return jsonify({"error": "문제 생성 실패"})
+
         return jsonify({
-            "question": question["question"],
-            "step": question["step"],
-            "number": session["current"] + 1,
-            "total": 30
+            "step": step,
+            "question": question,
+            "context": context,
+            "complete": False
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# 답안 제출 및 평가
 @app.route("/api/submit-answer", methods=["POST"])
 def submit_answer():
     try:
-        data = request.json
-        current = session["current"]
-        question = session["questions"][current]["question"]
-        step = session["step_sequence"][current]
-        answer = data["answer"]
+        data = request.get_json()
+        email = data.get("email")
+        user_answer = data.get("answer")
+        current_index = data.get("index", 0)
 
-        feedback = evaluate_answer(question, answer, step)
-        session["answers"].append({
-            "step": step,
-            "question": question,
-            "answer": answer,
-            "feedback": feedback
-        })
-        session["current"] += 1
-        complete = session["current"] >= 30
+        step = generate_next_step(email, current_index)
+        context = load_step_context(step)
+
+        if step is None or context is None:
+            return jsonify({"complete": False, "feedback": {"error": "문제 평가 정보 누락"}})
+
+        # GPT 평가 요청
+        messages = [
+            {
+                "role": "system",
+                "content": f"{step} 문항 채점 기준에 따라 다음 답안을 평가하세요. 기준: 이해도, 실무 적용 가능성, 구체성."
+            },
+            {"role": "user", "content": f"📘 문맥: {context}\n\n✍️ 학습자 답변: {user_answer}"}
+        ]
+
+        response = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=messages,
+            temperature=0.5,
+            functions=functions,
+            function_call={"name": "evaluate_answer"},
+        )
+
+        function_args = response.choices[0].message.function_call.arguments
+        feedback = json.loads(function_args)
+
+        complete = (current_index + 1 >= 30)
 
         return jsonify({
             "complete": complete,
-            "step": step,  # ✅ 클라이언트에서 필요
-            "feedback": feedback
+            "feedback": {
+                "answer": user_answer,
+                "question": data.get("question", ""),
+                "step": step,
+                **feedback,
+            },
         })
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/report", methods=["GET"])
-def report():
-    try:
-        report_data = generate_report(
-            session["name"],
-            session["email"],
-            session["answers"]
-        )
-        return jsonify(report_data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# 정적 HTML 서빙
+@app.route("/")
+def root():
+    return send_from_directory(app.static_folder, "quiz_ui_web.html")
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
