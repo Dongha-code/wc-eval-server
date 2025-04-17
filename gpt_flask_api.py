@@ -14,40 +14,69 @@ def load_context_for_step(step: str) -> str:
     return data["context"]
 
 def generate_question(step: str):
-    context = load_context_for_step(step)
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "너는 WiseCollector 2.0 진단 문제 출제자야."},
-            {"role": "user", "content": f"다음 STEP 내용을 기반으로 실무형 문제를 만들어줘.\n\n{context}"}
-        ],
-        functions=quiz_function_definitions,
-        function_call={"name": "generate_quiz_question"}
-    )
-    return json.loads(response.choices[0].message.function_call.arguments)
+    try:
+        context = load_context_for_step(step)
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "너는 WiseCollector 2.0 진단 문제 출제자야."},
+                {"role": "user", "content": f"{step} 내용 기반 실무형 문제를 생성해줘:\n\n{context}"}
+            ],
+            functions=quiz_function_definitions,
+            function_call={"name": "generate_quiz_question"},
+            timeout=10
+        )
+
+        call = response.choices[0].message.function_call
+        if not call or not call.arguments:
+            raise ValueError("GPT가 문제를 반환하지 않았습니다.")
+
+        result = json.loads(call.arguments)
+        if not result.get("question"):
+            raise ValueError("생성된 문제 항목이 없습니다.")
+
+        return result
+
+    except Exception as e:
+        print(f"❌ 문제 생성 실패 ({step}):", e)
+        return {
+            "question": f"❌ 문제 생성 실패: {str(e)}",
+            "choices": [],
+            "step": step
+        }
 
 def evaluate_answer(question: str, answer: str, step: str, correct=""):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "넌 교육 평가자야. 사용자 응답을 평가하고 피드백을 줘."},
-            {"role": "user", "content": f"문제: {question}\n답변: {answer}\n모범 답안: {correct}"}
-        ],
-        functions=quiz_function_definitions,
-        function_call={"name": "submit_answer"}
-    )
-    return json.loads(response.choices[0].message.function_call.arguments)
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "넌 교육 평가자야. 사용자 응답을 평가하고 피드백을 줘."},
+                {"role": "user", "content": f"문제: {question}\n답변: {answer}\n모범 답안: {correct}"}
+            ],
+            functions=quiz_function_definitions,
+            function_call={"name": "submit_answer"},
+            timeout=10
+        )
+        return json.loads(response.choices[0].message.function_call.arguments)
+    except Exception as e:
+        print(f"❌ 답안 평가 실패 ({step}):", e)
+        return {"feedback": f"❌ 평가 실패: {str(e)}", "step": step}
 
 def generate_report(name: str, email: str, answers: list):
-    messages = [
-        {"role": "system", "content": "넌 진단 결과 리포트를 생성하는 GPT야."},
-        {"role": "user", "content": f"다음은 {name}({email})의 진단 응답이야. 요약해줘.\n\n{json.dumps(answers, ensure_ascii=False)}"}
-    ]
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        functions=quiz_function_definitions,
-        function_call={"name": "generate_diagnostic_report"},
-        temperature=0.7
-    )
-    return json.loads(response.choices[0].message.function_call.arguments)
+    try:
+        messages = [
+            {"role": "system", "content": "넌 진단 결과 리포트를 생성하는 GPT야."},
+            {"role": "user", "content": f"다음은 {name}({email})의 진단 응답이야. 요약해줘.\n\n{json.dumps(answers, ensure_ascii=False)}"}
+        ]
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            functions=quiz_function_definitions,
+            function_call={"name": "generate_diagnostic_report"},
+            temperature=0.7,
+            timeout=10
+        )
+        return json.loads(response.choices[0].message.function_call.arguments)
+    except Exception as e:
+        print("❌ 리포트 생성 실패:", e)
+        return {"report": f"❌ 리포트 생성 실패: {str(e)}"}
