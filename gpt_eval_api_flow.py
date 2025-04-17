@@ -109,8 +109,35 @@ def evaluate_answer(answer, context=None, step="STEP ?"):
     except Exception as e:
         return {"error": str(e)}
 
-# ✅ 진단 결과 리포트 생성
+# ✅ 진단 결과 리포트 생성 (임시)
 def generate_report():
     return {
         "message": "진단 리포트 기능은 아직 구현되지 않았습니다."
     }
+
+# ✅ 빠졌던 핵심 함수: 현재 문제 반환
+def get_next_question():
+    try:
+        # 테스트용 기본 사용자 이메일 (실제 서비스 시 세션으로 받아야 함)
+        email = next(iter(user_sessions))
+        user = user_sessions[email]
+        index = user["current_index"]
+        step = user["step_sequence"][index]
+        context = load_step_context(step)
+
+        prompt = f"{step}의 학습 내용을 바탕으로 실무형 문제를 1문항 생성하세요."
+        question = generate_next_question(prompt, context)
+
+        # 상태 갱신
+        user["current_index"] += 1
+        user["answers"].append({"step": step, "question": question})
+
+        return {
+            "step": step,
+            "question": question,
+            "number": index + 1,
+            "total": 30
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
