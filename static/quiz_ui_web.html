@@ -104,7 +104,9 @@ async function loadNextQuestion() {
 function submitAnswer() {
   const answer = document.getElementById("answer").value;
   const submitBtn = document.getElementById("submit-button");
+
   if (!answer) return alert("답변을 입력해주세요.");
+
   submitBtn.disabled = true;
   isLoading = true;
 
@@ -115,7 +117,14 @@ function submitAnswer() {
   })
   .then(res => res.json())
   .then(data => {
-    if (data?.complete) {
+    console.log("✅ 서버 응답:", data);
+
+    if (data?.error) {
+      document.getElementById("question-text").innerText = "❌ 문제 평가 중 오류가 발생했습니다.";
+      return;
+    }
+
+    if (data.complete === true) {
       document.getElementById("question-text").innerText = "모든 문항 완료. 결과를 생성 중...";
       fetch("/api/report")
         .then(res => res.json())
