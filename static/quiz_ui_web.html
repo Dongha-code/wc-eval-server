@@ -1,153 +1,119 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>WiseCollector 2.0 운영 & 프록시 학습 진단</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css" />
   <style>
-    body { font-family: sans-serif; background: #f0f2f5; padding: 30px; }
-    #quiz-box {
-      background: white; padding: 20px; border-radius: 12px;
-      max-width: 700px; margin: auto;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    body {
+      background-color: #f2f3f5;
     }
-    h2 { margin-bottom: 10px; }
-    input, textarea, button {
-      display: block; margin-top: 10px; width: 100%;
-      padding: 10px; font-size: 1em;
-      box-sizing: border-box;
+    .quiz-box {
+      max-width: 720px;
+      margin: 4rem auto;
+      padding: 2rem;
+      background: white;
+      border-radius: 1rem;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
     }
-    button {
-      background: #007BFF; color: white;
-      border: none; border-radius: 5px;
-      cursor: pointer;
+    .loading {
+      color: #888;
+      font-size: 0.95rem;
     }
-    button:hover:not([disabled]) {
-      background: #0056b3;
+    .error {
+      color: red;
+      font-weight: bold;
+      font-size: 0.9rem;
     }
-    button:disabled {
-      background: #999;
-      cursor: not-allowed;
+    .step {
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
     }
-    #status {
-      margin-top: 20px; font-size: 0.9em; color: #555;
+    .counter {
+      color: #555;
+      margin-bottom: 0.25rem;
     }
   </style>
 </head>
 <body>
-  <div id="quiz-box">
-    <h2 id="quiz-title">WiseCollector 2.0 운영 & 프록시 학습 진단</h2>
-    <div id="login-area">
-      <input type="text" id="name" placeholder="이름을 입력하세요">
-      <input type="email" id="email" placeholder="이메일을 입력하세요">
-      <button onclick="startQuiz()">퀴즈 시작</button>
-    </div>
-    <div id="question-area" style="display:none;">
-      <div id="question-number">(0/30)</div>
-      <div id="question-step">📘 현재 단계: -</div>
-      <div id="question-text">🔄 문제를 생성 중입니다...</div>
-      <textarea id="answer" rows="4" placeholder="여기에 답변을 입력하세요"></textarea>
-      <button id="submit-button" onclick="submitAnswer()">다음 문항</button>
-    </div>
-    <div id="status"></div>
-  </div>
+  <main class="quiz-box">
+    <h3><strong>WiseCollector 2.0 운영 & 프록시 학습 진단</strong></h3>
+    <div id="counter" class="counter"></div>
+    <div id="step-info" class="step"></div>
+    <div id="question" class="question"></div>
+    <div id="error" class="error"></div>
 
-<script>
-let isLoading = false;
-const totalQuestions = 30;
+    <textarea id="answer" rows="4" placeholder="여기에 답변을 입력하세요"></textarea>
+    <button id="submit" onclick="submitAnswer()">다음 문항</button>
+  </main>
 
-function startQuiz() {
-  const name = document.getElementById("name").value;
-  const email = document.getElementById("email").value;
-  if (!name || !email) {
-    alert("이름과 이메일을 모두 입력하세요.");
-    return;
-  }
-  fetch("/api/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, email })
-  })
-  .then(() => {
-    document.getElementById("login-area").style.display = "none";
-    document.getElementById("question-area").style.display = "block";
-    loadNextQuestion();
-  });
-}
+  <script>
+    let current = 0;
+    let total = 30;
+    let sequence = [];
+    let user = "";
+    let email = "";
 
-async function loadNextQuestion() {
-  if (isLoading) return;
-  isLoading = true;
+    async function fetchQuestion() {
+      document.getElementById("submit").disabled = true;
+      document.getElementById("question").textContent = "🔄 문제를 생성 중입니다...";
+      document.getElementById("step-info").textContent = "";
+      document.getElementById("error").textContent = "";
 
-  const submitBtn = document.getElementById("submit-button");
-  submitBtn.disabled = true;
-  document.getElementById("question-text").innerText = "🔄 문제를 생성 중입니다...";
-  document.getElementById("question-number").innerText = "";
-  document.getElementById("question-step").innerText = "";
+      const res = await fetch("/api/next-question");
+      const data = await res.json();
 
-  try {
-    const res = await fetch("/api/next-question");
-    const q = await res.json();
+      if (!data || !data.question) {
+        document.getElementById("question").textContent = "❌ 문제를 불러오지 못했습니다.";
+        return;
+      }
 
-    if (!q || !q.question) {
-      document.getElementById("question-text").innerText = "❌ 문제를 불러오지 못했습니다.";
-    } else {
-      const currentNum = q.number || 0;
-      document.getElementById("question-text").innerText = q.question;
-      document.getElementById("question-step").innerText = `📘 현재 단계: ${q.step}`;
-      document.getElementById("question-number").innerText = `(${currentNum}/${totalQuestions})`;
+      document.getElementById("question").textContent = data.question;
+      document.getElementById("step-info").textContent = `🔷 현재 단계: ${data.step}`;
+      document.getElementById("counter").textContent = `(${current + 1}/${total})`;
+      document.getElementById("submit").disabled = false;
+    }
+
+    async function submitAnswer() {
+      const answer = document.getElementById("answer").value.trim();
+      if (!answer) return;
+
+      document.getElementById("submit").disabled = true;
+      document.getElementById("error").textContent = "";
+
+      const res = await fetch("/api/submit-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer })
+      });
+
+      const result = await res.json();
+
+      if (result.error) {
+        document.getElementById("error").textContent = "❌ 문제 평가 중 오류가 발생했습니다.";
+        document.getElementById("submit").disabled = false;
+        return;
+      }
+
+      // 다음 문제로
+      current += 1;
       document.getElementById("answer").value = "";
+
+      if (current >= total) {
+        document.getElementById("question").innerHTML = "<strong>🎉 학습 진단이 완료되었습니다!</strong>";
+        document.getElementById("step-info").textContent = "";
+        document.getElementById("counter").textContent = "";
+        document.getElementById("submit").style.display = "none";
+      } else {
+        await fetchQuestion();
+      }
     }
 
-  } catch (e) {
-    document.getElementById("question-text").innerText = `❌ 오류 발생: ${e.message}`;
-  }
-
-  submitBtn.disabled = false;
-  isLoading = false;
-}
-
-function submitAnswer() {
-  const answer = document.getElementById("answer").value;
-  const submitBtn = document.getElementById("submit-button");
-
-  if (!answer) return alert("답변을 입력해주세요.");
-
-  submitBtn.disabled = true;
-  isLoading = true;
-
-  fetch("/api/submit-answer", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ answer })
-  })
-  .then(res => res.json())
-  .then(data => {
-    console.log("✅ 서버 응답:", data);
-
-    if (data?.error) {
-      document.getElementById("question-text").innerText = "❌ 문제 평가 중 오류가 발생했습니다.";
-      return;
-    }
-
-    if (data.complete === true) {
-      document.getElementById("question-text").innerText = "모든 문항 완료. 결과를 생성 중...";
-      fetch("/api/report")
-        .then(res => res.json())
-        .then(report => {
-          document.getElementById("status").innerText = `✅ 결과 전송 완료: ${JSON.stringify(report)}`;
-        });
-    } else {
-      loadNextQuestion();
-    }
-  })
-  .catch(err => {
-    alert("⚠️ 답변 전송 중 오류가 발생했습니다.");
-  })
-  .finally(() => {
-    submitBtn.disabled = false;
-    isLoading = false;
-  });
-}
-</script>
+    // 초기화
+    window.onload = async () => {
+      await fetch("/api/start", { method: "POST" });
+      await fetchQuestion();
+    };
+  </script>
 </body>
 </html>
