@@ -122,10 +122,19 @@ function submitAnswer() {
         .then(res => res.json())
         .then(data => {
           document.getElementById("status").innerText = `✅ 결과 전송 완료: ${JSON.stringify(data)}`;
+          submitBtn.disabled = false;
+          isLoading = false;
         });
     } else {
       loadNextQuestion();
+      submitBtn.disabled = false;
+      isLoading = false;
     }
+  })
+  .catch(err => {
+    alert("⚠️ 답변 전송 중 오류가 발생했습니다.");
+    submitBtn.disabled = false;
+    isLoading = false;
   });
 }
 </script>
