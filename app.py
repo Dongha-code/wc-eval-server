@@ -43,7 +43,7 @@ def next_question():
         step = f"STEP {user_session['current_step']}"
         result = generate_question(step)
         user_session["current_question"] = result
-        result["step"] = step  # ✅ 클라이언트에게 단계 정보 전달
+        result["step"] = step
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -65,7 +65,7 @@ def submit_answer():
         })
 
         user_session["current_step"] += 1
-        complete = user_session["current_step"] > 9  # ✅ 모든 문항 완료 여부 판단
+        complete = user_session["current_step"] > 9
 
         return jsonify({
             "feedback": feedback,
@@ -95,7 +95,7 @@ def submit():
         messages = [
             {
                 "role": "system",
-                "content": "너는 WiseCollector 평가 시스템이야. 응답을 평가하고 결과를 JSON으로 자동 제출해야 해."
+                "content": "너는 WiseCollector 평가 시스템이야. 응답을 평가하고 결과를 JSON으로 자동 제출해야 해. 반드시 한국어로 리포트를 작성해."
             },
             {
                 "role": "user",
@@ -105,7 +105,7 @@ def submit():
         ]
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4-turbo",  # ✅ 변경됨
             messages=messages,
             tools=[{"type": "function", "function": functions[0]}],
             tool_choice={"type": "function", "function": {"name": "submit_evaluation_result"}}
