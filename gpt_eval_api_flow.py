@@ -2,14 +2,14 @@
 
 from openai import OpenAI
 from dotenv import load_dotenv
-import os, requests
+import os, requests, json
+from datetime import datetime
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 WEBHOOK_URL = os.getenv("GOOGLE_SHEETS_WEBHOOK")  # 시트 저장용 웹훅 주소
 
 # STEP별 콘텐츠 불러오기 (사전 로딩)
-import json
 step_contexts = {}
 for i in range(1, 10):
     with open(f"step_{i}.json", "r", encoding="utf-8") as f:
@@ -31,9 +31,9 @@ def generate_next_question():
     context = step_contexts[step_id]["context"]
 
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4-turbo",  # ✅ 변경 완료
         messages=[
-            {"role": "system", "content": "너는 문제 출제자야."},
+            {"role": "system", "content": "너는 WiseCollector 진단 문제 출제자야. 반드시 한국어로 문제를 만들어야 해."},
             {"role": "user", "content": context}
         ],
         functions=[{
@@ -62,9 +62,9 @@ def submit_user_answer(user_answer):
     current_q = session["questions"][session["current"]]
 
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4-turbo",  # ✅ 변경 완료
         messages=[
-            {"role": "system", "content": "넌 GPT 평가자야."},
+            {"role": "system", "content": "넌 GPT 평가자야. 반드시 한국어로 피드백을 줘."},
             {"role": "user", "content": f"문제: {current_q['question']}\n답변: {user_answer}"}
         ],
         functions=[{
@@ -88,7 +88,6 @@ def submit_user_answer(user_answer):
     return feedback
 
 def generate_final_report():
-    from datetime import datetime
     today = datetime.today().strftime("%Y-%m-%d")
 
     # 샘플 정답률 계산 (임시)
