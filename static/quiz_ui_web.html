@@ -52,15 +52,16 @@
   </div>
 
 <script>
-let current = 0;
-const total = 30;
 let isLoading = false;
+const totalQuestions = 30;
 
 function startQuiz() {
   const name = document.getElementById("name").value;
   const email = document.getElementById("email").value;
-  if (!name || !email) return alert("이름과 이메일을 입력하세요.");
-
+  if (!name || !email) {
+    alert("이름과 이메일을 모두 입력하세요.");
+    return;
+  }
   fetch("/api/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -74,25 +75,28 @@ function startQuiz() {
 }
 
 async function loadNextQuestion() {
-  if (isLoading || current >= total) return;
+  if (isLoading) return;
   isLoading = true;
+
   const submitBtn = document.getElementById("submit-button");
   submitBtn.disabled = true;
   document.getElementById("question-text").innerText = "🔄 문제를 생성 중입니다...";
-  document.getElementById("question-number").innerText = `(${current + 1}/${total})`;
+  document.getElementById("question-number").innerText = "";
+  document.getElementById("question-step").innerText = "";
 
   try {
     const res = await fetch("/api/next-question");
     const q = await res.json();
 
-    if (q.complete) {
-      document.getElementById("question-text").innerText = "✅ 모든 문항이 완료되었습니다.";
-      return;
+    if (!q || !q.question) {
+      document.getElementById("question-text").innerText = "❌ 문제를 불러오지 못했습니다.";
+    } else {
+      const currentNum = q.number || 0;
+      document.getElementById("question-text").innerText = q.question;
+      document.getElementById("question-step").innerText = `📘 현재 단계: ${q.step}`;
+      document.getElementById("question-number").innerText = `(${currentNum}/${totalQuestions})`;
+      document.getElementById("answer").value = "";
     }
-
-    document.getElementById("question-text").innerText = q.question;
-    document.getElementById("question-number").innerText = `(${q.index}/${q.total}) 📘 현재 단계: ${q.step}`;
-    document.getElementById("answer").value = "";
 
   } catch (e) {
     document.getElementById("question-text").innerText = `❌ 오류 발생: ${e.message}`;
@@ -104,8 +108,10 @@ async function loadNextQuestion() {
 
 function submitAnswer() {
   const answer = document.getElementById("answer").value;
-  if (!answer) return alert("답변을 입력해주세요.");
   const submitBtn = document.getElementById("submit-button");
+
+  if (!answer) return alert("답변을 입력해주세요.");
+
   submitBtn.disabled = true;
   isLoading = true;
 
@@ -116,24 +122,26 @@ function submitAnswer() {
   })
   .then(res => res.json())
   .then(data => {
-    if (data.error) {
+    console.log("✅ 서버 응답:", data);
+
+    if (data?.error) {
       document.getElementById("question-text").innerText = "❌ 문제 평가 중 오류가 발생했습니다.";
+      return;
+    }
+
+    if (data.complete === true) {
+      document.getElementById("question-text").innerText = "모든 문항 완료. 결과를 생성 중...";
+      fetch("/api/report")
+        .then(res => res.json())
+        .then(report => {
+          document.getElementById("status").innerText = `✅ 결과 전송 완료: ${JSON.stringify(report)}`;
+        });
     } else {
-      current++;
-      if (data.complete) {
-        document.getElementById("question-text").innerText = "✅ 모든 문항 완료. 결과를 생성 중...";
-        fetch("/api/report")
-          .then(res => res.json())
-          .then(report => {
-            document.getElementById("status").innerText = `✅ 결과: ${JSON.stringify(report)}`;
-          });
-      } else {
-        loadNextQuestion();
-      }
+      loadNextQuestion();
     }
   })
-  .catch(() => {
-    alert("⚠️ 서버 오류가 발생했습니다.");
+  .catch(err => {
+    alert("⚠️ 답변 전송 중 오류가 발생했습니다.");
   })
   .finally(() => {
     submitBtn.disabled = false;
