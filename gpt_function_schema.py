@@ -64,3 +64,6 @@ quiz_function_definitions = [
     }
   }
 ]
+
+# ✅ 외부에서 functions라는 이름으로 불러쓸 수 있도록 export
+functions = quiz_function_definitions
