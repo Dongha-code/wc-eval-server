@@ -16,12 +16,15 @@ CORS(app)
 
 client = openai.OpenAI()
 
-# 퀴즈 시작 (사용자 초기화)
+# ✅ 1. 사용자 초기화
 @app.route("/api/start", methods=["POST"])
 def start_quiz():
     try:
         data = request.get_json()
         email = data.get("email")
+        if not email:
+            return jsonify({"error": "이메일이 제공되지 않았습니다."}), 400
+
         user_sessions[email] = {
             "step_sequence": [],
             "history": [],
@@ -31,7 +34,7 @@ def start_quiz():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 다음 문제 요청
+# ✅ 2. 다음 문제 요청
 @app.route("/api/next-question", methods=["GET"])
 def next_question():
     try:
@@ -65,7 +68,7 @@ def next_question():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 답안 제출 및 평가
+# ✅ 3. 답안 제출 및 평가
 @app.route("/api/submit-answer", methods=["POST"])
 def submit_answer():
     try:
@@ -80,7 +83,6 @@ def submit_answer():
         if step is None or context is None:
             return jsonify({"complete": False, "feedback": {"error": "문제 평가 정보 누락"}})
 
-        # GPT 평가 요청
         messages = [
             {
                 "role": "system",
@@ -114,12 +116,12 @@ def submit_answer():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 정적 HTML 서빙
+# ✅ 4. 정적 HTML 서빙
 @app.route("/")
 def root():
     return send_from_directory(app.static_folder, "quiz_ui_web.html")
 
-# ✅ Render에서 포트 감지 가능하게 설정
+# ✅ 5. 포트 감지 (Render 환경)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
