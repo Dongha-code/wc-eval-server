@@ -8,6 +8,8 @@ from gpt_eval_api_flow import (
 )
 from gpt_function_schema import functions
 import openai
+import os
+import json
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 CORS(app)
@@ -117,3 +119,7 @@ def submit_answer():
 def root():
     return send_from_directory(app.static_folder, "quiz_ui_web.html")
 
+# ✅ Render에서 포트 감지 가능하게 설정
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
