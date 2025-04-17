@@ -68,10 +68,10 @@ def submit_answer():
         complete = user_session["current_step"] > 9
 
         return jsonify({
-            "feedback": feedback,
-            "step": step,
-            "complete": complete
+            "complete": complete,
+            "feedback": feedback  # ✅ step은 feedback 안에만 존재
         })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -105,7 +105,7 @@ def submit():
         ]
 
         response = client.chat.completions.create(
-            model="gpt-4-turbo",  # ✅ 변경됨
+            model="gpt-4-turbo",
             messages=messages,
             tools=[{"type": "function", "function": functions[0]}],
             tool_choice={"type": "function", "function": {"name": "submit_evaluation_result"}}
