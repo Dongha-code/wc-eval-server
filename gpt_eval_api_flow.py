@@ -6,10 +6,10 @@ from gpt_function_schema import functions
 
 client = OpenAI()
 
-# 사용자 세션 상태 저장
+# 사용자 세션 저장소
 user_sessions = {}
 
-# STEP 시퀀스 생성
+# STEP 시퀀스 생성 (중복 없이 섞어서 총 30개)
 def generate_step_sequence():
     steps = [f"STEP {i}" for i in range(1, 10)]
     full_sequence = []
@@ -18,17 +18,18 @@ def generate_step_sequence():
         full_sequence.extend(steps)
     return full_sequence[:30]
 
-# 사용자 초기화
+# 사용자 세션 초기화
 def init_user_session(name, email):
     user_sessions[email] = {
         "name": name,
         "email": email,
         "step_sequence": generate_step_sequence(),
         "current_index": 0,
-        "answers": []
+        "answers": [],
+        "next_question": None
     }
 
-# 현재 STEP 반환
+# 현재 STEP 추출
 def get_current_step(email):
     user = user_sessions.get(email)
     if not user:
@@ -38,7 +39,7 @@ def get_current_step(email):
         return None
     return user["step_sequence"][idx]
 
-# STEP context 로딩
+# STEP context 불러오기
 def load_step_context(step_label):
     filename = f"{step_label.lower().replace(' ', '_')}.json"
     try:
@@ -47,25 +48,17 @@ def load_step_context(step_label):
     except:
         return None
 
-# 혼합형 문제 생성
-def generate_mixed_quiz_question(step, context):
+# 문제 생성 (혼합형 중 택일)
+def generate_quiz_question(step, context):
     system_prompt = f"""
-너는 WiseCollector 2.0 운영 학습 진단을 위한 GPT 출제자입니다.
+너는 WiseCollector 2.0 운영 평가용 GPT 출제자입니다.
 
-📌 조건:
-- 문항은 반드시 "선택형 또는 서술형" 중 하나만 생성합니다. 동시에 둘 다 포함하지 마세요.
-- 문제 유형은 랜덤하게 선택되며 한 문제에 하나만 출제됩니다.
-- 선택형은 (A)(B)(C)(D) 형식으로 보기 제공
-- 선택형 보기 (A) ~ (D)는 반드시 줄바꿈하여 각 항목이 한 줄씩 보이도록 작성하세요.
-예시:
-(A) 보기1
-(B) 보기2
-(C) 보기3
-(D) 보기4
-- 절대로 정답을 포함하지 마세요 ("정답: ..." 문구는 금지)
-- 어떤 형식의 주석(###, **서술:** 등)도 사용하지 마세요
-- 질문은 실무 중심, 명확하고 간결하게
-- 답변은 한국어로 생성
+다음 조건을 따라 한 문항을 생성하세요:
+- 하나의 유형만 생성 (선택형 또는 서술형 중 택일)
+- 선택형일 경우 (A)(B)(C)(D) 형식으로 4개 보기 제시
+- 절대로 정답을 포함하지 마세요
+- 마크다운이나 주석(###, **정답**, **서술**) 없이 순수 질문만 생성
+- 질문은 한국어로 생성
 
 STEP: {step}
 """
@@ -83,15 +76,12 @@ STEP: {step}
     except Exception as e:
         return f"[GPT 오류] {e}"
 
-# 다음 문제 반환
-def get_next_question(email):
-    user = user_sessions.get(email)
-    if not user:
-        return {"error": "세션이 없습니다."}
-
+# 다음 문제 생성 및 캐시
+def get_next_question(user):
+    email = user["email"]
     step = get_current_step(email)
     context = load_step_context(step)
-    question = generate_mixed_quiz_question(step, context)
+    question = generate_quiz_question(step, context)
 
     user["answers"].append({
         "step": step,
@@ -99,32 +89,32 @@ def get_next_question(email):
         "answer": None,
         "feedback": None
     })
-
     user["current_index"] += 1
 
     return {
         "step": step,
         "question": question,
         "number": user["current_index"],
-        "total": 30
+        "total": 30,
+        "complete": is_quiz_complete(email)
     }
 
-# GPT Function Calling 기반 평가
+# 답안 평가
 def evaluate_answer(email, answer):
     user = user_sessions.get(email)
     if not user:
-        return {"error": "세션이 없습니다."}
+        return {"error": "세션 없음"}
 
     idx = user["current_index"] - 1
     question = user["answers"][idx]["question"]
     step = user["answers"][idx]["step"]
 
     prompt = f"""
-다음은 {step}에 대한 학습자 서술형 답변입니다. 다음 기준에 따라 평가해주세요:
+다음은 {step}에 대한 학습자의 서술형 답변입니다. 다음 기준에 따라 평가하세요:
 - 실무 적용 가능성
 - 구체성
 - 핵심 개념 포함 여부
-- 개선 피드백과 추천 방향 포함
+- 개선 피드백 및 추천 방향 포함
 """
 
     try:
@@ -143,7 +133,6 @@ def evaluate_answer(email, answer):
 
         args = json.loads(response.choices[0].message.function_call.arguments)
 
-        user["answers"][idx]["answer"] = answer
         user["answers"][idx]["feedback"] = args
 
         return {
@@ -155,16 +144,24 @@ def evaluate_answer(email, answer):
     except Exception as e:
         return {"error": str(e)}
 
+# 제출 답안을 저장하는 함수 (submit_user_answer)
+def submit_user_answer(email, answer):
+    user = user_sessions.get(email)
+    if not user:
+        return
+    idx = user["current_index"] - 1
+    if 0 <= idx < len(user["answers"]):
+        user["answers"][idx]["answer"] = answer
+
 # 완료 여부
 def is_quiz_complete(email):
     return user_sessions[email]["current_index"] >= 30
 
-# 리포트 반환
+# 결과 요약
 def generate_report(email):
     user = user_sessions.get(email)
     if not user:
         return {"error": "세션 없음"}
-    
     return {
         "name": user["name"],
         "email": user["email"],
