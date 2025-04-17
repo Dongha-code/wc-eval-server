@@ -32,7 +32,7 @@ def generate_question(step: str):
             ],
             functions=quiz_function_definitions,
             function_call={"name": "generate_quiz_question"},
-            timeout=10
+            timeout=20
         )
 
         message = response.choices[0].message
@@ -67,7 +67,7 @@ def evaluate_answer(question: str, answer: str, step: str, correct=""):
             ],
             functions=quiz_function_definitions,
             function_call={"name": "submit_answer"},
-            timeout=10
+            timeout=20
         )
         return json.loads(response.choices[0].message.function_call.arguments)
     except Exception as e:
@@ -86,7 +86,7 @@ def generate_report(name: str, email: str, answers: list):
             functions=quiz_function_definitions,
             function_call={"name": "generate_diagnostic_report"},
             temperature=0.7,
-            timeout=10
+            timeout=20
         )
         return json.loads(response.choices[0].message.function_call.arguments)
     except Exception as e:
