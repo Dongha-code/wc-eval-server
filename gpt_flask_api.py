@@ -25,7 +25,7 @@ def generate_question(step: str):
         log.info(f"📄 [CONTEXT 길이]: {len(context)}")
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4-turbo",  # ✅ 변경 완료
             messages=[
                 {"role": "system", "content": "너는 WiseCollector 2.0 진단 문제 출제자야."},
                 {"role": "user", "content": f"{step} 내용 기반 실무형 문제를 생성해줘:\n\n{context}"}
@@ -60,7 +60,7 @@ def generate_question(step: str):
 def evaluate_answer(question: str, answer: str, step: str, correct=""):
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4-turbo",  # ✅ 변경 완료
             messages=[
                 {"role": "system", "content": "넌 교육 평가자야. 사용자 응답을 평가하고 피드백을 줘."},
                 {"role": "user", "content": f"문제: {question}\n답변: {answer}\n모범 답안: {correct}"}
@@ -81,7 +81,7 @@ def generate_report(name: str, email: str, answers: list):
             {"role": "user", "content": f"다음은 {name}({email})의 진단 응답이야. 요약해줘.\n\n{json.dumps(answers, ensure_ascii=False)}"}
         ]
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4-turbo",  # ✅ 변경 완료
             messages=messages,
             functions=quiz_function_definitions,
             function_call={"name": "generate_diagnostic_report"},
