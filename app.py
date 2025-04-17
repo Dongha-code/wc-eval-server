@@ -3,7 +3,12 @@ from datetime import datetime
 import requests, json, openai, os
 from dotenv import load_dotenv
 from gpt_function_schema import functions
-from gpt_flask_api import generate_question, evaluate_answer, generate_report, create_step_sequence
+from gpt_eval_api_flow import (
+    generate_next_question,
+    evaluate_answer,
+    generate_report,
+    session
+)
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -12,43 +17,29 @@ client = openai.OpenAI(api_key=api_key)
 
 app = Flask(__name__)
 
-# 세션 상태
-user_session = {
-    "name": None,
-    "email": None,
-    "answers": [],
-    "step_sequence": [],
-    "current_index": 0,
-    "current_question": None
-}
-
 @app.route("/")
 def index():
-    return "✅ GPT 평가 서버가 실행 중입니다."
+    return "✅ GPT 진단 서버 실행 중"
 
 @app.route("/api/start", methods=["POST"])
-def start_quiz():
+def start():
     data = request.json
-    user_session["name"] = data["name"]
-    user_session["email"] = data["email"]
-    user_session["answers"] = []
-    user_session["current_index"] = 0
-    user_session["step_sequence"] = create_step_sequence(total_questions=30)
-    return jsonify({"status": "started"})
+    session["name"] = data["name"]
+    session["email"] = data["email"]
+    session["current"] = 0
+    session["answers"] = []
+    return jsonify({"status": "ready"})
 
 @app.route("/api/next-question", methods=["GET"])
 def next_question():
     try:
-        index = user_session["current_index"]
-        if index >= len(user_session["step_sequence"]):
-            return jsonify({"complete": True})
-        step = user_session["step_sequence"][index]
-        result = generate_question(step)
-        result["step"] = step
-        result["index"] = index + 1
-        result["total"] = len(user_session["step_sequence"])
-        user_session["current_question"] = result
-        return jsonify(result)
+        question = generate_next_question()
+        return jsonify({
+            "question": question["question"],
+            "step": question["step"],
+            "number": session["current"] + 1,
+            "total": 30
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -56,25 +47,25 @@ def next_question():
 def submit_answer():
     try:
         data = request.json
+        current = session["current"]
+        question = session["questions"][current]["question"]
+        step = session["step_sequence"][current]
         answer = data["answer"]
-        question = user_session["current_question"]["question"]
-        step = user_session["step_sequence"][user_session["current_index"]]
-        feedback = evaluate_answer(question, answer, step)
 
-        user_session["answers"].append({
+        feedback = evaluate_answer(question, answer, step)
+        session["answers"].append({
             "step": step,
             "question": question,
             "answer": answer,
             "feedback": feedback
         })
-
-        user_session["current_index"] += 1
-        complete = user_session["current_index"] >= len(user_session["step_sequence"])
+        session["current"] += 1
+        complete = session["current"] >= 30
 
         return jsonify({
             "complete": complete,
-            "feedback": feedback,
-            "step": step
+            "step": step,  # ✅ 클라이언트에서 필요
+            "feedback": feedback
         })
 
     except Exception as e:
@@ -83,10 +74,14 @@ def submit_answer():
 @app.route("/api/report", methods=["GET"])
 def report():
     try:
-        answers = user_session["answers"]
-        name = user_session["name"]
-        email = user_session["email"]
-        report_data = generate_report(name, email, answers)
+        report_data = generate_report(
+            session["name"],
+            session["email"],
+            session["answers"]
+        )
         return jsonify(report_data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
