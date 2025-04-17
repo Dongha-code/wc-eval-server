@@ -51,7 +51,6 @@
   </div>
 
 <script>
-let current = 0, total = 30;
 let isLoading = false;
 
 function startQuiz() {
@@ -74,13 +73,13 @@ function startQuiz() {
 }
 
 async function loadNextQuestion() {
-  if (current >= total || isLoading) return;
+  if (isLoading) return;
   isLoading = true;
 
   const submitBtn = document.getElementById("submit-button");
   submitBtn.disabled = true;
   document.getElementById("question-text").innerText = "🔄 문제를 생성 중입니다...";
-  document.getElementById("question-number").innerText = `(${current + 1}/${total})`;
+  document.getElementById("question-number").innerText = "";
 
   try {
     const res = await fetch("/api/next-question");
@@ -90,6 +89,7 @@ async function loadNextQuestion() {
       document.getElementById("question-text").innerText = "❌ 문제를 불러오지 못했습니다.";
     } else {
       document.getElementById("question-text").innerText = q.question;
+      document.getElementById("question-number").innerText = `📘 현재 단계: ${q.step}`;
       document.getElementById("answer").value = "";
     }
 
@@ -114,25 +114,22 @@ function submitAnswer() {
     body: JSON.stringify({ answer })
   })
   .then(res => res.json())
-  .then(() => {
-    current++;
-    if (current >= total) {
+  .then(data => {
+    if (data?.complete) {
       document.getElementById("question-text").innerText = "모든 문항 완료. 결과를 생성 중...";
       fetch("/api/report")
         .then(res => res.json())
-        .then(data => {
-          document.getElementById("status").innerText = `✅ 결과 전송 완료: ${JSON.stringify(data)}`;
-          submitBtn.disabled = false;
-          isLoading = false;
+        .then(report => {
+          document.getElementById("status").innerText = `✅ 결과 전송 완료: ${JSON.stringify(report)}`;
         });
     } else {
       loadNextQuestion();
-      submitBtn.disabled = false;
-      isLoading = false;
     }
   })
   .catch(err => {
     alert("⚠️ 답변 전송 중 오류가 발생했습니다.");
+  })
+  .finally(() => {
     submitBtn.disabled = false;
     isLoading = false;
   });
