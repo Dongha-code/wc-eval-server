@@ -1,40 +1,52 @@
 # GPT 기반 자동 평가 대화 흐름 (Flask API 연동 포함)
 
+import json
+import os
 from openai import OpenAI
 from dotenv import load_dotenv
-import os, requests, json
 from datetime import datetime
+import requests
+import random
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-WEBHOOK_URL = os.getenv("GOOGLE_SHEETS_WEBHOOK")  # 시트 저장용 웹훅 주소
+WEBHOOK_URL = os.getenv("GOOGLE_SHEETS_WEBHOOK")
 
-# STEP별 콘텐츠 불러오기 (사전 로딩)
+# STEP별 context 사전 로딩
 step_contexts = {}
 for i in range(1, 10):
     with open(f"step_{i}.json", "r", encoding="utf-8") as f:
-        step_data = json.load(f)
-        step_contexts[f"STEP {i}"] = step_data
+        data = json.load(f)
+        step_contexts[f"STEP {i}"] = data["context"]
 
-# 사용자 진행 세션 초기화
+# 문제 시퀀스 생성 (30문제)
+def generate_step_sequence():
+    base = [f"STEP {i}" for i in range(1, 10)]
+    sequence = []
+    while len(sequence) < 30:
+        random.shuffle(base)
+        sequence.extend(base)
+    return sequence[:30]
+
+# 사용자 세션
 session = {
     "name": None,
     "email": None,
     "current": 0,
-    "responses": [],
+    "step_sequence": generate_step_sequence(),
+    "answers": [],
     "questions": []
 }
 
 def generate_next_question():
-    step_num = (session["current"] % 9) + 1
-    step_id = f"STEP {step_num}"
-    context = step_contexts[step_id]["context"]
+    step = session["step_sequence"][session["current"]]
+    context = step_contexts[step]
 
     response = client.chat.completions.create(
-        model="gpt-4-turbo",  # ✅ 변경 완료
+        model="gpt-4-turbo",
         messages=[
             {"role": "system", "content": "너는 WiseCollector 진단 문제 출제자야. 반드시 한국어로 문제를 만들어야 해."},
-            {"role": "user", "content": context}
+            {"role": "user", "content": f"{step} 학습 내용을 기반으로 실무형 문제를 생성해줘:\n\n{context}"}
         ],
         functions=[{
             "name": "generate_quiz_question",
@@ -42,30 +54,30 @@ def generate_next_question():
                 "type": "object",
                 "properties": {
                     "step": {"type": "string"},
-                    "context": {"type": "string"}
+                    "context": {"type": "string"},
+                    "question": {"type": "string"}
                 },
-                "required": ["step", "context"]
+                "required": ["step", "context", "question"]
             }
         }],
-        function_call={"name": "generate_quiz_question"}
+        function_call={"name": "generate_quiz_question"},
+        timeout=20
     )
 
     args = json.loads(response.choices[0].message.function_call.arguments)
     question = {
-        "step": step_id,
-        "question": f"{step_id}: {args['context'][:80]}... 에 기반한 문제를 생성하세요."
+        "step": step,
+        "question": args["question"]
     }
     session["questions"].append(question)
     return question
 
-def submit_user_answer(user_answer):
-    current_q = session["questions"][session["current"]]
-
+def evaluate_answer(question, answer, step):
     response = client.chat.completions.create(
-        model="gpt-4-turbo",  # ✅ 변경 완료
+        model="gpt-4-turbo",
         messages=[
-            {"role": "system", "content": "넌 GPT 평가자야. 반드시 한국어로 피드백을 줘."},
-            {"role": "user", "content": f"문제: {current_q['question']}\n답변: {user_answer}"}
+            {"role": "system", "content": "넌 교육 평가자야. 반드시 한국어로 평가하고 피드백을 줘."},
+            {"role": "user", "content": f"문제: {question}\n답변: {answer}"}
         ],
         functions=[{
             "name": "submit_answer",
@@ -79,34 +91,25 @@ def submit_user_answer(user_answer):
                 "required": ["question", "answer", "step"]
             }
         }],
-        function_call={"name": "submit_answer"}
+        function_call={"name": "submit_answer"},
+        timeout=20
     )
 
-    feedback = json.loads(response.choices[0].message.function_call.arguments)
-    session["responses"].append({"question": current_q["question"], "answer": user_answer, "feedback": feedback})
-    session["current"] += 1
-    return feedback
+    return json.loads(response.choices[0].message.function_call.arguments)
 
-def generate_final_report():
-    today = datetime.today().strftime("%Y-%m-%d")
-
-    # 샘플 정답률 계산 (임시)
-    score = 70 + (session["current"] % 30)
-    summary = {
-        "이름": session["name"],
-        "이메일": session["email"],
-        "진단일": today,
-        "레벨": "Level 3",
-        "정답률": score,
-        "STEP1": 85, "STEP2": 70, "STEP3": 60,
-        "STEP4": 80, "STEP5": 75, "STEP6": 90,
-        "STEP7": 78, "STEP8": 65, "STEP9": 85,
-        "추천STEP": "STEP3, STEP8",
-        "강점요약": "태깅 구조 이해, 변수 활용 능숙",
-        "약점요약": "보안 설정 미흡, 성능 항목 취약",
-        "전체평가요약": "실무 이해는 양호하나 일부 STEP은 추가 학습 필요"
-    }
-
-    # 전송
-    res = requests.post(WEBHOOK_URL, json=summary)
-    return summary if res.ok else {"error": res.text}
+def generate_report(name, email, answers):
+    messages = [
+        {"role": "system", "content": "넌 진단 결과 리포트를 생성하는 GPT야. 반드시 한국어로 작성해."},
+        {"role": "user", "content": f"다음은 {name}({email})의 진단 응답이야. 요약해줘.\n\n{json.dumps(answers, ensure_ascii=False)}"}
+    ]
+    response = client.chat.completions.create(
+        model="gpt-4-turbo",
+        messages=messages,
+        functions=[{
+            "name": "generate_diagnostic_report",
+            "parameters": {}
+        }],
+        function_call={"name": "generate_diagnostic_report"},
+        timeout=20
+    )
+    return json.loads(response.choices[0].message.function_call.arguments)
