@@ -48,7 +48,7 @@
 
     #status {
       margin-top: 20px;
-      color: #444;
+      color: #007bff;
       font-size: 0.95rem;
     }
   </style>
@@ -104,12 +104,15 @@
     async function loadNextQuestion() {
       const submitBtn = document.getElementById("submit-button");
       submitBtn.disabled = true;
+      document.getElementById("status").innerText = "🧠 문제를 생성 중입니다...";
+      
       const res = await fetch(`/api/next-question?email=${encodeURIComponent(email)}`);
       const q = await res.json();
 
       if (q.complete) {
         document.getElementById("question-text").innerText = "✅ 진단 완료! 결과 생성 중...";
         submitBtn.style.display = "none";
+        document.getElementById("status").innerText = "";
         showReport();
         return;
       }
@@ -119,8 +122,9 @@
       document.getElementById("question-step").innerText = `📘 현재 단계: ${q.step}`;
       document.getElementById("question-text").innerText = q.question;
       document.getElementById("answer").value = "";
-
-      submitBtn.disabled = false; // ✅ 문제 표시 완료 후 버튼 활성화
+      submitBtn.disabled = false;
+      submitBtn.innerText = "다음 문항";
+      document.getElementById("status").innerText = "";
     }
 
     async function submitAnswer() {
@@ -128,7 +132,9 @@
       if (!answer) return alert("답변을 입력하세요.");
 
       const submitBtn = document.getElementById("submit-button");
-      submitBtn.disabled = true; // ✅ 평가 중 비활성화
+      submitBtn.disabled = true;
+      submitBtn.innerText = "제출 중...";
+      document.getElementById("status").innerText = "⏳ GPT가 답변을 평가하고 있습니다...";
 
       const res = await fetch("/api/submit-answer", {
         method: "POST",
@@ -139,13 +145,15 @@
       const data = await res.json();
       if (data.error) {
         document.getElementById("status").innerText = "⚠️ 오류 발생: " + data.error;
+        submitBtn.innerText = "다음 문항";
         submitBtn.disabled = false;
       } else if (data.complete) {
         document.getElementById("question-text").innerText = "🎉 모든 문항 완료!";
         submitBtn.style.display = "none";
+        document.getElementById("status").innerText = "";
         showReport();
       } else {
-        await loadNextQuestion(); // 내부에서 버튼 재활성화됨
+        await loadNextQuestion();
       }
     }
 
