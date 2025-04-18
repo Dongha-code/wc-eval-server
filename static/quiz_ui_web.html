@@ -2,231 +2,139 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>WiseCollector 2.0 진단</title>
-  <style>
-    body {
-      background: #f2f2f2;
-      font-family: 'Segoe UI', sans-serif;
-      padding: 40px;
-    }
-
-    #container {
-      max-width: 720px;
-      background: white;
-      margin: auto;
-      padding: 30px;
-      border-radius: 12px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-    }
-
-    h2 {
-      margin-top: 0;
-    }
-
-    input, textarea {
-      width: 100%;
-      padding: 12px;
-      margin: 10px 0;
-      box-sizing: border-box;
-      font-size: 16px;
-    }
-
-    button {
-      padding: 12px 20px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
-
-    #status {
-      margin-top: 20px;
-      color: #007bff;
-      font-size: 0.95rem;
-      white-space: pre-line;
-    }
-
-    #summary {
-      margin-top: 30px;
-      background: #f9f9f9;
-      padding: 20px;
-      border-radius: 10px;
-      display: none;
-    }
-
-    #summary h3 {
-      margin-top: 0;
-    }
-
-    #recommend {
-      color: #444;
-      margin-top: 10px;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WiseCollector 2.0 학습 진단</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body>
-  <div id="container">
-    <h2>WiseCollector 2.0 운영 & 프록시 학습 진단</h2>
-    <p style="color:#666; font-size: 0.95rem; margin-top: -10px; margin-bottom: 20px;">
-      ⏱ 예상 소요 시간: 약 60분 (총 30문항)
-    </p>
+<body class="bg-gray-100 text-gray-800">
+  <div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-3xl bg-white p-8 rounded-xl shadow-md space-y-6" id="main-container">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">WiseCollector 2.0 운영 & 프록시 학습 진단</h1>
+        <p class="text-sm text-gray-500">⏱ 예상 소요 시간: 약 60분 (총 30문항)</p>
+      </div>
 
-    <div id="login-area">
-      <input type="text" id="name" placeholder="이름을 입력하세요" />
-      <input type="email" id="email" placeholder="이메일을 입력하세요" />
-      <button onclick="startQuiz()">퀴즈 시작</button>
-    </div>
+      <div id="quiz-container">
+        <p id="progress" class="text-sm text-gray-600 mb-1"></p>
+        <p id="step-indicator" class="text-sm text-blue-600 font-medium"></p>
+        <p id="question" class="mt-2 whitespace-pre-line"></p>
 
-    <div id="quiz-area" style="display: none;">
-      <div id="question-number"></div>
-      <div id="question-step" style="margin-top: 10px; color: #007bff;"></div>
-      <div id="question-text" style="margin: 16px 0; white-space: pre-line;"></div>
-      <textarea id="answer" rows="5" placeholder="여기에 답변을 입력하세요..."></textarea>
-      <button id="submit-button" onclick="submitAnswer()">다음 문항</button>
-    </div>
+        <textarea id="answer" rows="4" class="mt-4 w-full border border-gray-300 rounded-md p-2" placeholder="여기에 답변을 입력하세요"></textarea>
+        <button id="next-btn" class="w-full mt-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md disabled:opacity-50" disabled>
+          다음 문항
+        </button>
+        <p id="status" class="text-sm text-gray-500 mt-2"></p>
+      </div>
 
-    <div id="status"></div>
-
-    <!-- 결과 요약 -->
-    <div id="summary">
-      <h3>🎉 모든 문항을 완료하셨습니다!</h3>
-      <div id="summary-details"></div>
-      <div id="recommend"></div>
+      <div id="result-container" class="hidden bg-gray-50 p-6 rounded-lg">
+        <h2 class="text-xl font-bold text-red-600 mb-4">🎉 모든 문항을 완료하셨습니다!</h2>
+        <p class="text-sm text-gray-700 mb-1"><strong>✅ 진단 결과 제출 완료 (30문항).</strong></p>
+        <p class="text-sm text-gray-700 mb-1" id="result-name"></p>
+        <p class="text-sm text-gray-700 mb-4" id="result-email"></p>
+        <ul class="space-y-2 text-sm text-gray-700">
+          <li>📊 총 문항 수: <span id="result-total"></span></li>
+          <li>🧮 평균 점수: <span id="result-avg"></span></li>
+          <li>📈 최고/최저 점수: <span id="result-max-min"></span></li>
+          <li>🎯 평가 수준: <span id="result-level" class="font-bold text-red-500"></span></li>
+          <li>📌 복습 추천 STEP: <span id="result-review-steps"></span></li>
+        </ul>
+      </div>
     </div>
   </div>
 
   <script>
-    let name = "";
-    let email = "";
-    let questionIndex = 0;
-    const totalQuestions = 30;
+    const stepIndicator = document.getElementById("step-indicator");
+    const progress = document.getElementById("progress");
+    const question = document.getElementById("question");
+    const answerInput = document.getElementById("answer");
+    const nextBtn = document.getElementById("next-btn");
+    const statusText = document.getElementById("status");
+    const resultContainer = document.getElementById("result-container");
+    const quizContainer = document.getElementById("quiz-container");
 
-    // ✅ 보기 항목 줄바꿈 자동 보정
-    function formatQuestionText(raw) {
-      return raw
-        .replace(/ ?\((A)\)/g, '\n(A)')
-        .replace(/ ?\((B)\)/g, '\n(B)')
-        .replace(/ ?\((C)\)/g, '\n(C)')
-        .replace(/ ?\((D)\)/g, '\n(D)');
+    let currentQuestion = 0;
+    let totalQuestions = 30;
+    let questions = [];
+    let stepSequence = [];
+
+    let userName = "";
+    let userEmail = "";
+
+    async function fetchNextQuestion() {
+      nextBtn.disabled = true;
+      statusText.textContent = "📡 문제를 불러오는 중입니다...";
+      const response = await fetch("/api/next-question");
+      const data = await response.json();
+      if (data && data.question) {
+        questions.push(data.question);
+        stepSequence.push(data.step || "STEP ?");
+        currentQuestion = questions.length;
+        updateUI();
+      }
+      nextBtn.disabled = false;
+      statusText.textContent = "";
     }
 
-    async function startQuiz() {
-      name = document.getElementById("name").value.trim();
-      email = document.getElementById("email").value.trim();
-
-      if (!name || !email) {
-        alert("이름과 이메일을 모두 입력해주세요.");
-        return;
-      }
-
-      await fetch("/api/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email })
-      });
-
-      document.getElementById("login-area").style.display = "none";
-      document.getElementById("quiz-area").style.display = "block";
-
-      loadNextQuestion();
-    }
-
-    async function loadNextQuestion() {
-      const submitBtn = document.getElementById("submit-button");
-      submitBtn.disabled = true;
-      document.getElementById("status").innerText = "🧠 문제를 생성 중입니다...";
-      
-      const res = await fetch(`/api/next-question?email=${encodeURIComponent(email)}`);
-      const q = await res.json();
-
-      if (q.complete) {
-        document.getElementById("question-text").innerText = "✅ 진단 완료! 결과 생성 중...";
-        submitBtn.style.display = "none";
-        document.getElementById("status").innerText = "";
-        showReport();
-        return;
-      }
-
-      questionIndex = q.number || 1;
-      document.getElementById("question-number").innerText = `(${questionIndex}/${totalQuestions})`;
-      document.getElementById("question-step").innerText = `🔍 학습 범위: ${q.step}`;
-      document.getElementById("question-text").innerText = formatQuestionText(q.question); // ✅ 보정 적용
-      document.getElementById("answer").value = "";
-      submitBtn.disabled = false;
-      submitBtn.innerText = "다음 문항";
-      document.getElementById("status").innerText = "";
+    function updateUI() {
+      progress.textContent = `(${currentQuestion}/30)`;
+      stepIndicator.innerHTML = `🔍 학습 범위: <span class="font-semibold text-blue-500">${stepSequence[currentQuestion - 1]}</span>`;
+      question.textContent = questions[currentQuestion - 1] || "";
+      answerInput.value = "";
+      answerInput.focus();
     }
 
     async function submitAnswer() {
-      const answer = document.getElementById("answer").value.trim();
-      if (!answer) return alert("답변을 입력하세요.");
+      const answer = answerInput.value.trim();
+      if (!answer) return;
+      nextBtn.disabled = true;
+      statusText.textContent = "답안을 제출 중입니다...";
 
-      const submitBtn = document.getElementById("submit-button");
-      submitBtn.disabled = true;
-      submitBtn.innerText = "제출 중...";
-      document.getElementById("status").innerText = "⏳ GPT가 답변을 평가하고 있습니다...";
+      const payload = {
+        answer,
+        question: questions[currentQuestion - 1],
+        step: stepSequence[currentQuestion - 1],
+        name: userName,
+        email: userEmail,
+      };
 
-      const res = await fetch("/api/submit-answer", {
+      await fetch("/api/submit-answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, answer })
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (data.error) {
-        document.getElementById("status").innerText = "⚠️ 오류 발생: " + data.error;
-        submitBtn.innerText = "다음 문항";
-        submitBtn.disabled = false;
-      } else if (data.complete) {
-        document.getElementById("question-text").innerText = "🎉 모든 문항 완료!";
-        submitBtn.style.display = "none";
-        document.getElementById("status").innerText = "";
-        showReport();
+      if (currentQuestion >= totalQuestions) {
+        showResult();
       } else {
-        await loadNextQuestion();
+        await fetchNextQuestion();
       }
     }
 
-    async function showReport() {
-      const res = await fetch(`/api/report?email=${encodeURIComponent(email)}`);
-      const report = await res.json();
-      document.getElementById("status").innerText =
-        `✅ 진단 결과 제출 완료 (${report.answers.length}문항).\n\n이름: ${report.name}\n이메일: ${report.email}`;
+    function showResult() {
+      quizContainer.classList.add("hidden");
+      resultContainer.classList.remove("hidden");
 
-      const all = report.answers;
-      const scores = all.map(r => r.feedback?.score || 0);
-      const steps = all.map(r => r.step);
-      const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-      const min = Math.min(...scores);
-      const max = Math.max(...scores);
-      const level = all[all.length - 1].feedback?.level || "-";
+      document.getElementById("result-name").textContent = `이름: ${userName}`;
+      document.getElementById("result-email").textContent = `이메일: ${userEmail}`;
 
-      document.getElementById("summary-details").innerHTML = `
-        <p>📊 총 문항 수: ${all.length}</p>
-        <p>🧮 평균 점수: ${avg}점</p>
-        <p>📈 최고/최저 점수: ${max}점 / ${min}점</p>
-        <p>🎯 평가 수준: <strong>${level}</strong></p>
-      `;
-
-      const lowestSteps = all
-        .map((r, i) => ({ step: r.step, score: r.feedback?.score || 0 }))
-        .sort((a, b) => a.score - b.score)
-        .slice(0, 3)
-        .map(r => r.step);
-
-      document.getElementById("recommend").innerHTML = `
-        <p>📌 복습 추천 STEP: ${[...new Set(lowestSteps)].join(", ")}</p>
-      `;
-
-      document.getElementById("summary").style.display = "block";
+      fetch("/api/result-summary")
+        .then(res => res.json())
+        .then(summary => {
+          document.getElementById("result-total").textContent = summary.total || "30";
+          document.getElementById("result-avg").textContent = `${summary.averageScore || 0}점`;
+          document.getElementById("result-max-min").textContent = `${summary.max || 100}점 / ${summary.min || 0}점`;
+          document.getElementById("result-level").textContent = summary.level || "N/A";
+          document.getElementById("result-review-steps").textContent = summary.recommendedSteps || "-";
+        });
     }
+
+    nextBtn.addEventListener("click", submitAnswer);
+
+    window.onload = async () => {
+      userName = prompt("이름을 입력하세요:");
+      userEmail = prompt("이메일을 입력하세요:");
+      await fetchNextQuestion();
+    };
   </script>
 </body>
 </html>
