@@ -87,14 +87,14 @@
     <div id="quiz-area" style="display: none;">
       <div id="question-number"></div>
       <div id="question-step" style="margin-top: 10px; color: #007bff;"></div>
-      <div id="question-text" style="margin: 16px 0;"></div>
+      <div id="question-text" style="margin: 16px 0; white-space: pre-line;"></div>
       <textarea id="answer" rows="5" placeholder="여기에 답변을 입력하세요..."></textarea>
       <button id="submit-button" onclick="submitAnswer()">다음 문항</button>
     </div>
 
     <div id="status"></div>
 
-    <!-- ✅ 진단 요약 결과 영역 -->
+    <!-- 결과 요약 -->
     <div id="summary">
       <h3>🎉 모든 문항을 완료하셨습니다!</h3>
       <div id="summary-details"></div>
@@ -107,6 +107,15 @@
     let email = "";
     let questionIndex = 0;
     const totalQuestions = 30;
+
+    // ✅ 보기 항목 줄바꿈 자동 보정
+    function formatQuestionText(raw) {
+      return raw
+        .replace(/ ?\((A)\)/g, '\n(A)')
+        .replace(/ ?\((B)\)/g, '\n(B)')
+        .replace(/ ?\((C)\)/g, '\n(C)')
+        .replace(/ ?\((D)\)/g, '\n(D)');
+    }
 
     async function startQuiz() {
       name = document.getElementById("name").value.trim();
@@ -148,7 +157,7 @@
       questionIndex = q.number || 1;
       document.getElementById("question-number").innerText = `(${questionIndex}/${totalQuestions})`;
       document.getElementById("question-step").innerText = `🔍 학습 범위: ${q.step}`;
-      document.getElementById("question-text").innerText = q.question;
+      document.getElementById("question-text").innerText = formatQuestionText(q.question); // ✅ 보정 적용
       document.getElementById("answer").value = "";
       submitBtn.disabled = false;
       submitBtn.innerText = "다음 문항";
@@ -191,7 +200,6 @@
       document.getElementById("status").innerText =
         `✅ 진단 결과 제출 완료 (${report.answers.length}문항).\n\n이름: ${report.name}\n이메일: ${report.email}`;
 
-      // ✅ 요약 화면에 표시
       const all = report.answers;
       const scores = all.map(r => r.feedback?.score || 0);
       const steps = all.map(r => r.step);
@@ -207,7 +215,6 @@
         <p>🎯 평가 수준: <strong>${level}</strong></p>
       `;
 
-      // 추천 STEP
       const lowestSteps = all
         .map((r, i) => ({ step: r.step, score: r.feedback?.score || 0 }))
         .sort((a, b) => a.score - b.score)
