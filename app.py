@@ -1,90 +1,70 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, redirect, send_from_directory
 from flask_cors import CORS
 from gpt_eval_api_flow import (
     init_user_session,
-    submit_user_answer,
     get_next_question,
-    is_quiz_complete,
-    get_user_result_summary
+    evaluate_answer,
+    generate_report,
+    is_quiz_complete
 )
-from threading import Thread
-import os
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__, static_url_path="/static", static_folder="static")
 CORS(app)
 
-# 사용자 세션 저장소
-user_sessions = {}
-
-# 정적 파일 라우팅
 @app.route("/")
-def index():
-    return send_from_directory("static", "quiz_ui_web.html")
+def root():
+    return redirect("/static/quiz_ui_web.html")
 
-@app.route("/static/<path:path>")
-def serve_static(path):
-    return send_from_directory("static", path)
-
-# 초기 시작
 @app.route("/api/start", methods=["POST"])
-def start():
-    data = request.get_json()
-    email = data.get("email")
-    name = data.get("name")
-    if not email or not name:
-        return jsonify({"error": "이름과 이메일이 필요합니다."}), 400
+def start_quiz():
+    try:
+        data = request.get_json()
+        name = data.get("name")
+        email = data.get("email")
+        if not name or not email:
+            return jsonify({"error": "이름과 이메일이 필요합니다."}), 400
+        init_user_session(name, email)
+        return jsonify({"message": "시작됨"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    user_sessions[email] = init_user_session(name, email)
-    first_question = get_next_question(user_sessions[email])
-    return jsonify(first_question)
+@app.route("/api/next-question", methods=["GET"])
+def next_question():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"error": "이메일이 누락되었습니다."}), 400
+        question = get_next_question(email)
+        return jsonify(question)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-# 답안 제출 - 비동기 처리 방식
 @app.route("/api/submit-answer", methods=["POST"])
 def submit_answer():
-    data = request.get_json()
-    email = data.get("email")
-    answer = data.get("answer")
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        answer = data.get("answer")
+        if not email or not answer:
+            return jsonify({"error": "이메일과 답변이 필요합니다."}), 400
+        result = evaluate_answer(email, answer)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    if email not in user_sessions:
-        return jsonify({"error": "세션이 존재하지 않습니다."}), 400
+@app.route("/api/report", methods=["GET"])
+def report():
+    try:
+        email = request.args.get("email")
+        if not email:
+            return jsonify({"error": "이메일이 필요합니다."}), 400
+        report_data = generate_report(email)
+        return jsonify(report_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # 답안 저장
-    submit_user_answer(email, answer)
-
-    # 다음 문제 비동기 생성
-    def generate_next():
-        user_sessions[email]["next_question"] = get_next_question(user_sessions[email])
-
-    Thread(target=generate_next).start()
-
-    return jsonify({"message": "답안 제출 완료"})
-
-# 다음 문제 요청 (캐시된 문제 반환)
-@app.route("/api/next-question", methods=["GET"])
-def api_next_question():
-    email = request.args.get("email")
-
-    if email not in user_sessions:
-        return jsonify({"error": "세션이 없습니다."}), 400
-
-    if "next_question" in user_sessions[email]:
-        next_q = user_sessions[email].pop("next_question")
-        return jsonify(next_q)
-    elif is_quiz_complete(user_sessions[email]):
-        return jsonify({"complete": True})
-    else:
-        return jsonify({"status": "loading"}), 202
-
-# 최종 결과 요청
-@app.route("/api/result", methods=["GET"])
-def get_result():
-    email = request.args.get("email")
-    if email not in user_sessions:
-        return jsonify({"error": "세션이 없습니다."}), 400
-
-    result = get_user_result_summary(user_sessions[email])
-    return jsonify(result)
-
+# ✅ Render 배포용 포트 설정
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get("PORT", 10000))
-    app.run(debug=False, host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port)
