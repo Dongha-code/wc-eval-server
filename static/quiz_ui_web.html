@@ -119,7 +119,7 @@
 
       questionIndex = q.number || 1;
       document.getElementById("question-number").innerText = `(${questionIndex}/${totalQuestions})`;
-      document.getElementById("question-step").innerText = `📘 현재 단계: ${q.step}`;
+      document.getElementById("question-step").innerText = `🔍 학습 범위: ${q.step}`;  // ✅ 표현 개선
       document.getElementById("question-text").innerText = q.question;
       document.getElementById("answer").value = "";
       submitBtn.disabled = false;
